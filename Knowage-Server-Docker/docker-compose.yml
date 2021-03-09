@@ -1,33 +1,29 @@
 version: "3.1"
 services:
   knowage:
-    image: knowagelabs/knowage-server-docker:8.0.0-SNAPSHOT
+    #image: knowagelabs/knowage-server-docker:7.4.0-SNAPSHOT
+    build: ./
+    image: knowage-server-docker:7.4.0-alain
     depends_on:
       - knowagedb
-      - knowagecache
     ports:
       - "8080:8080"
     networks:
       - main
     environment:
-      - DB_HOST=$DB_HOST
-      - DB_PORT=$DB_PORT
-      - DB_DB=$DB_DB
       - DB_USER=$DB_USER
       - DB_PASS=$DB_PASS
-
-      - CACHE_DB_HOST=$CACHE_DB_HOST
-      - CACHE_DB_PORT=$CACHE_DB_PORT
-      - CACHE_DB_DB=$CACHE_DB_DB
-      - CACHE_DB_USER=$CACHE_DB_USER
-      - CACHE_DB_PASS=$CACHE_DB_PASS
-
+      - DB_DB=$DB_DB
+      - DB_HOST=$DB_HOST
+      - DB_PORT=$DB_PORT
       - HMAC_KEY=$HMAC_KEY
       - PASSWORD_ENCRYPTION_SECRET=$PASSWORD_ENCRYPTION_SECRET
       - PUBLIC_ADDRESS=localhost
+    volumes:
+      - /Users/alaing/Documents/FIWARE/knowage/Knowage-Server/knowagecockpitengine/src/main/webapp/js/src:/home/knowage/apache-tomcat/webapps/knowagecockpitengine/js/src-7.4.0-SNAPSHOT
 
   knowagepython:
-    image: knowagelabs/knowage-python-docker:8.0.0-SNAPSHOT
+    image: knowagelabs/knowage-python-docker:7.2
     environment:
       - HMAC_KEY=$HMAC_KEY
       - KNOWAGE_PUBLIC_ADDRESS=knowage
@@ -36,7 +32,7 @@ services:
       - main
 
   knowager:
-    image: knowagelabs/knowage-r-docker:8.0.0-SNAPSHOT
+    image: knowagelabs/knowage-r-docker:7.2
     environment:
       - HMAC_KEY=$HMAC_KEY
     networks:
@@ -48,27 +44,91 @@ services:
       - MYSQL_USER=$DB_USER
       - MYSQL_PASSWORD=$DB_PASS
       - MYSQL_DATABASE=$DB_DB
-      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+      - MYSQL_ROOT_PASSWORD=$DB_ROOT_PASS
     networks:
       - main
+    ports:
+      - 3306:3306
+ 
     volumes:
       - "db:/var/lib/mysql"
 
-  knowagecache:
-    image: mariadb:10.3
+  postgres:
+    image: postgres:latest
     environment:
-      - MYSQL_USER=$CACHE_DB_USER
-      - MYSQL_PASSWORD=$CACHE_DB_PASS
-      - MYSQL_DATABASE=$CACHE_DB_DB
-      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres #${PG_USER:-postgres}
+    volumes:
+      - 'pgdata:/var/lib/postgresql/data'
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${PG_USER:-postgres}"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
     networks:
       - main
+    ports:
+      - 5432:5432
+    restart: on-failure
+    stdin_open: true
+    tty: true
+
+
+  #######################################
+  # Fiware Containers
+  #######################################
+
+  mongo:
+    image: mongo:3.6
     volumes:
-      - "cache:/var/lib/mysql"
+      - mongo:/data/db
+    ports:
+      - 27017:27017
+    networks:
+      - main
+
+  orion:
+    image: fiware/orion:2.4.0
+    depends_on:
+      - mongo
+    networks:
+      - main
+    ports:
+      - "1026:1026"
+    command:
+      -logLevel DEBUG -noCache -dbhost mongo -corsOrigin __ALL -corsMaxAge 600 # -insecureNotif #-dbhost mongo
+
+  # http-server:
+  #   # attention image modifée dans Dockerfile du repo original
+  #   # cd ../docker-nodejs-http-server/
+  #   # use modified Dockerfile to build image:
+  #   # docker build -t cannin/nodejs-http-server .
+  #   image: cannin/nodejs-http-server
+  #   ports:
+  #     - "7000:8080"
+  #   working_dir: /www
+  #   networks:
+  #     - main
+  #   volumes:
+  #     # exposition d'un dossier local du mac contenant des fichiers doc démos etc.
+  #     - './www/docs:/www'
+
+  # node-red:
+  #   image: nodered/node-red-docker
+  #   ports:
+  #     - "1880:1880"
+  #   networks:
+  #     - main
+  #   volumes:
+  #     - ./nodered:/data
+
+
 
 volumes:
   db:
-  cache:
+  mongo:
+  pgdata:
 
 networks:
   main:
